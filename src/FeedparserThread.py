@@ -5,6 +5,8 @@ import collections
 import threading
 import feedparser
 import logging
+import os
+from urllib.parse import quote
 
 
 Post = collections.namedtuple('Post', [
@@ -35,9 +37,15 @@ class FeedparserThread(threading.Thread):
         self.myposts = []
 
     def run(self):
+        feed_url = self.url
+        if os.getenv("FULLTEXT_MORSS", "").strip().lower() in ("1", "true", "yes", "y"):
+            morss_url = os.getenv("MORSS_URL", "https://morss.it").rstrip("/")
+            morss_mode = os.getenv("MORSS_MODE", "clip").strip() or "clip"
+            feed_url = f"{morss_url}/:{morss_mode}/{quote(self.url, safe=':/')}"
+        min_items = int(os.getenv("MIN_ITEMS_PER_FEED", "0") or 0)
         try:
             feed = feedparser.parse(
-                self.url,
+                feed_url,
                 agent="news2kindle/1.0 (+https://github.com/)",
             )
         except Exception as exc:
@@ -52,10 +60,18 @@ class FeedparserThread(threading.Thread):
             blog = feed['feed']['title']
         except KeyError:
             blog = "---"
+        all_posts = []
         for entry in feed['entries']:
-            post = process_entry(entry, blog, self.START)
+            post = process_entry(entry, blog, None)
             if post:
-                self.myposts.append(post)
+                all_posts.append(post)
+
+        all_posts.sort(key=lambda post: post.time, reverse=True)
+        recent_posts = [post for post in all_posts if post.time >= self.START]
+        if min_items > 0 and len(recent_posts) < min_items:
+            self.myposts = all_posts[:min_items]
+        else:
+            self.myposts = recent_posts
         self.myposts.sort()
         self.posts += self.myposts
 
@@ -81,7 +97,7 @@ def process_entry(entry, blog, START):
         # print blog, entry
         return
 
-    if when < START:
+    if START and when < START:
         return
 
     title = entry.get('title', "Null")

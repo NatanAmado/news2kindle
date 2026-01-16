@@ -50,4 +50,6 @@ jobs:
           CONFIG_PATH: ${{ github.workspace }}/config
           LOOKBACK_HOURS: "24"
           RUN_ONCE: "1"
+          FULLTEXT_MORSS: "1"
+          MIN_ITEMS_PER_FEED: "10"
         run: python src/news2kindle.py
