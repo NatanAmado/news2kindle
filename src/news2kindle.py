@@ -44,7 +44,8 @@ def load_feeds():
         At the moment, it reads it from `feed_file`.
     """
     with open(feed_file, 'r') as f:
-        return list(f)
+        # Strip whitespace and drop blank/comment lines to avoid bad URLs.
+        return [line.strip() for line in f if line.strip() and not line.lstrip().startswith('#')]
 
 
 def update_start(now):
@@ -145,7 +146,13 @@ def send_mail(send_from, send_to, subject, text, files):
                 Content_Disposition=f'attachment; filename="{os.path.basename(f)}"',
                 Name=os.path.basename(f)
             ))
-    smtp = smtplib.SMTP_SSL(EMAIL_SMTP, EMAIL_SMTP_PORT)
+    if EMAIL_SMTP_PORT == 465:
+        smtp = smtplib.SMTP_SSL(EMAIL_SMTP, EMAIL_SMTP_PORT)
+    else:
+        smtp = smtplib.SMTP(EMAIL_SMTP, EMAIL_SMTP_PORT)
+        smtp.ehlo()
+        smtp.starttls()
+        smtp.ehlo()
     smtp.login(EMAIL_USER, EMAIL_PASSWD)
     smtp.sendmail(send_from, send_to, msg.as_string())
     smtp.quit()
@@ -160,7 +167,15 @@ def convert_to_mobi(input_file, output_file):
 def do_one_round():
     # get all posts from starting point to now
     now = pytz.utc.localize(datetime.now())
-    start = get_start(feed_file)
+    lookback_hours = os.getenv("LOOKBACK_HOURS")
+    if lookback_hours:
+        try:
+            start = now - timedelta(hours=int(lookback_hours))
+        except ValueError:
+            logging.warning("Invalid LOOKBACK_HOURS=%s; using feed timestamp", lookback_hours)
+            start = get_start(feed_file)
+    else:
+        start = get_start(feed_file)
 
     logging.info(f"Collecting posts since {start}")
 
@@ -206,6 +221,9 @@ def do_one_round():
 
 
 if __name__ == '__main__':
+    run_once = os.getenv("RUN_ONCE", "").strip().lower() in ("1", "true", "yes", "y")
     while True:
         do_one_round()
+        if run_once:
+            break
         time.sleep(PERIOD*60)

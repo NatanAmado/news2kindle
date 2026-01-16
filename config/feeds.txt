@@ -8,3 +8,8 @@ https://hackernoon.com/tagged/engineering/feed
 http://feeds.howtogeek.com/HowToGeek
 http://feeds.feedburner.com/GDBcode
 https://www.blog.google/rss/
+
+
+https://www.foreignaffairs.com/rss.xml
+https://thediplomat.com/feed/
+https://www.diario-red.com/rss/america-latina/

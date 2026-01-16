@@ -1,0 +1,58 @@
+name: news2kindle
+
+on:
+  schedule:
+    - cron: "0 10 * * *"
+    - cron: "0 11 * * *"
+  workflow_dispatch:
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Santiago time
+        id: timecheck
+        run: |
+          HOUR=$(TZ=America/Santiago date +%H)
+          if [ "$HOUR" = "07" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Python
+        if: steps.timecheck.outputs.run == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system dependencies
+        if: steps.timecheck.outputs.run == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc calibre
+
+      - name: Install Python dependencies
+        if: steps.timecheck.outputs.run == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Prepare config
+        if: steps.timecheck.outputs.run == 'true'
+        run: |
+          sudo mkdir -p /config
+          sudo cp -r config/* /config/
+
+      - name: Run news2kindle
+        if: steps.timecheck.outputs.run == 'true'
+        env:
+          EMAIL_SMTP: ${{ secrets.EMAIL_SMTP }}
+          EMAIL_SMTP_PORT: ${{ secrets.EMAIL_SMTP_PORT }}
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          KINDLE_EMAIL: ${{ secrets.KINDLE_EMAIL }}
+          LOOKBACK_HOURS: "24"
+          RUN_ONCE: "1"
+        run: python src/news2kindle.py

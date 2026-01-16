@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import collections
 import threading
 import feedparser
+import logging
 
 
 Post = collections.namedtuple('Post', [
@@ -34,7 +35,19 @@ class FeedparserThread(threading.Thread):
         self.myposts = []
 
     def run(self):
-        feed = feedparser.parse(self.url)
+        try:
+            feed = feedparser.parse(
+                self.url,
+                agent="news2kindle/1.0 (+https://github.com/)",
+            )
+        except Exception as exc:
+            logging.warning("Feed fetch failed: %s (%s)", self.url, exc)
+            return
+
+        if getattr(feed, "bozo", False):
+            exc = getattr(feed, "bozo_exception", None)
+            if exc:
+                logging.warning("Feed parse warning: %s (%s)", self.url, exc)
         try:
             blog = feed['feed']['title']
         except KeyError:
