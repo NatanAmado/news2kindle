@@ -38,12 +38,6 @@ jobs:
         if: steps.timecheck.outputs.run == 'true'
         run: pip install -r requirements.txt
 
-      - name: Prepare config
-        if: steps.timecheck.outputs.run == 'true'
-        run: |
-          sudo mkdir -p /config
-          sudo cp -r config/* /config/
-
       - name: Run news2kindle
         if: steps.timecheck.outputs.run == 'true'
         env:
@@ -53,6 +47,7 @@ jobs:
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           KINDLE_EMAIL: ${{ secrets.KINDLE_EMAIL }}
+          CONFIG_PATH: ${{ github.workspace }}/config
           LOOKBACK_HOURS: "24"
           RUN_ONCE: "1"
         run: python src/news2kindle.py

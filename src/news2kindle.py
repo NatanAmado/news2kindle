@@ -31,7 +31,7 @@ KINDLE_EMAIL = os.getenv("KINDLE_EMAIL")
 PANDOC = os.getenv("PANDOC_PATH", "/usr/bin/pandoc")
 PERIOD = int(os.getenv("UPDATE_PERIOD", 12))  # hours between RSS pulls
 
-CONFIG_PATH = '/config'
+CONFIG_PATH = os.path.expanduser(os.getenv("CONFIG_PATH", "/config"))
 FEED_FILE = os.path.join(CONFIG_PATH, 'feeds.txt')
 COVER_FILE = os.path.join(CONFIG_PATH, 'cover.png')
 
