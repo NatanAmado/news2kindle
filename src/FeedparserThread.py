@@ -42,7 +42,12 @@ class FeedparserThread(threading.Thread):
             morss_url = os.getenv("MORSS_URL", "https://morss.it").rstrip("/")
             morss_mode = os.getenv("MORSS_MODE", "clip").strip() or "clip"
             feed_url = f"{morss_url}/:{morss_mode}/{quote(self.url, safe=':/')}"
-        min_items = int(os.getenv("MIN_ITEMS_PER_FEED", "0") or 0)
+        try:
+            min_items = int(os.getenv("MIN_ITEMS_PER_FEED", "0") or 0)
+        except ValueError:
+            logging.warning("Invalid MIN_ITEMS_PER_FEED; using 0")
+            min_items = 0
+        skip_bozo = os.getenv("SKIP_BOZO", "1").strip().lower() in ("1", "true", "yes", "y")
         try:
             feed = feedparser.parse(
                 feed_url,
@@ -56,6 +61,8 @@ class FeedparserThread(threading.Thread):
             exc = getattr(feed, "bozo_exception", None)
             if exc:
                 logging.warning("Feed parse warning: %s (%s)", self.url, exc)
+            if skip_bozo:
+                return
         try:
             blog = feed['feed']['title']
         except KeyError:
@@ -115,6 +122,9 @@ def process_entry(entry, blog, START):
     try:
         body = entry['content'][0]['value']
     except KeyError:
-        body = entry['summary']
+        body = entry.get('summary', '')
+
+    if not body:
+        return
 
     return Post(when, blog, title, author, link, body)

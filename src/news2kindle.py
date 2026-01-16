@@ -186,6 +186,8 @@ def do_one_round():
 
         logging.info("Creating epub")
 
+        epub_title = os.getenv("EPUB_TITLE", "Daily News")
+        epub_lang = os.getenv("EPUB_LANG", "en")
         epubFile = 'dailynews.epub'
 
         os.environ['PYPANDOC_PANDOC'] = PANDOC
@@ -195,6 +197,8 @@ def do_one_round():
                               outputfile=epubFile,
                               extra_args=["--standalone",
                                           f"--epub-cover-image={COVER_FILE}",
+                                          f"--metadata=title={epub_title}",
+                                          f"--metadata=lang={epub_lang}",
                                           ])
         logging.info("Sending to kindle email")
         send_mail(send_from=EMAIL_FROM,
@@ -202,11 +206,18 @@ def do_one_round():
                   subject="Daily News",
                   text="This is your daily news.\n\n--\n\n",
                   files=[epubFile])
-        logging.info("Cleaning up...")
-        os.remove(epubFile)
+        keep_output = os.getenv("KEEP_OUTPUT", "").strip().lower() in ("1", "true", "yes", "y")
+        if keep_output:
+            logging.info("Keeping output file %s", epubFile)
+        else:
+            logging.info("Cleaning up...")
+            os.remove(epubFile)
 
     logging.info("Finished.")
-    update_start(now)
+    try:
+        update_start(now)
+    except OSError as exc:
+        logging.warning("Could not update feed timestamp: %s", exc)
 
 
 if __name__ == '__main__':
