@@ -17,6 +17,7 @@ import logging
 import threading
 from datetime import datetime, timedelta
 import os
+import html
 from FeedparserThread import FeedparserThread
 
 logging.basicConfig(level=logging.INFO)
@@ -88,11 +89,15 @@ def nicedate(dt):
 
 
 def nicehour(dt):
-    return dt.strftime('%I:%M&thinsp;%p').strip('0').lower()
+    return dt.strftime('%I:%M %p').strip('0').lower()
 
 
 def nicepost(post):
     thispost = post._asdict()
+    thispost['blog'] = html.escape(thispost.get('blog', ''), quote=True)
+    thispost['title'] = html.escape(thispost.get('title', ''), quote=True)
+    thispost['author'] = html.escape(thispost.get('author', ''), quote=True)
+    thispost['link'] = html.escape(thispost.get('link', ''), quote=True)
     thispost['nicedate'] = nicedate(thispost['time'])
     thispost['nicetime'] = nicehour(thispost['time'])
     return thispost
@@ -100,15 +105,13 @@ def nicepost(post):
 
 # <link rel="stylesheet" type="text/css" href="style.css">
 html_head = u"""<html>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width" />
 <head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-<style>
-</style>
-<title>THE DAILY NEWS</title>
+  <title>THE DAILY NEWS</title>
+  <style>
+  </style>
 </head>
 <body>
 
@@ -125,6 +128,13 @@ html_perpost = u"""
         <p><small>By {author} for <i>{blog}</i>, on {nicedate} at {nicetime}.</small></p>
          {body}
     </article>
+"""
+
+html_persource = u"""
+    <section>
+        <h2>{blog}</h2>
+{posts}
+    </section>
 """
 
 
@@ -164,10 +174,25 @@ def message_size_bytes(msg):
     return len(msg.as_bytes())
 
 
+def build_html(posts):
+    posts_by_blog = {}
+    for post in posts:
+        posts_by_blog.setdefault(post.blog, []).append(post)
+
+    grouped = []
+    for blog, blog_posts in posts_by_blog.items():
+        rendered_posts = u"\n".join(
+            [html_perpost.format(**nicepost(post)) for post in blog_posts]
+        )
+        grouped.append(html_persource.format(
+            blog=html.escape(blog, quote=True),
+            posts=rendered_posts,
+        ))
+    return html_head + u"\n".join(grouped) + html_tail
+
+
 def build_epub(posts, epub_file, epub_title, epub_lang):
-    result = html_head + \
-        u"\n".join([html_perpost.format(**nicepost(post))
-                    for post in posts]) + html_tail
+    result = build_html(posts)
 
     os.environ['PYPANDOC_PANDOC'] = PANDOC
     pypandoc.convert_text(result,

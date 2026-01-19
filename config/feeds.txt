@@ -1,5 +1,4 @@
 https://www.democracynow.org/democracynow.rss
-http://feeds.howtogeek.com/HowToGeek
 http://feeds.feedburner.com/GDBcode
 https://www.wired.com/feed/tag/ai/latest/rss
 https://www.foreignaffairs.com/rss.xml

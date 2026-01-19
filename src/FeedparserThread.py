@@ -7,6 +7,11 @@ import feedparser
 import logging
 import os
 from urllib.parse import quote
+import re
+try:
+    from bs4 import BeautifulSoup
+except ImportError:  # Optional dependency; fall back to raw HTML.
+    BeautifulSoup = None
 
 
 Post = collections.namedtuple('Post', [
@@ -17,6 +22,49 @@ Post = collections.namedtuple('Post', [
     'link',
     'body'
 ])
+
+_INVALID_XML_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
+
+
+def strip_invalid_xml_chars(text):
+    if not text:
+        return ''
+    return _INVALID_XML_RE.sub('', text)
+
+
+def sanitize_body(body):
+    body = strip_invalid_xml_chars(body)
+    if not body:
+        return ''
+    sanitize_html = os.getenv("SANITIZE_HTML", "1").strip().lower() in ("1", "true", "yes", "y")
+    if not sanitize_html or BeautifulSoup is None:
+        return body
+    soup = BeautifulSoup(body, "html.parser")
+    for tag in soup(["script", "style", "iframe", "svg", "video", "audio", "form"]):
+        tag.decompose()
+    strip_images = os.getenv("STRIP_IMAGES", "1").strip().lower() in ("1", "true", "yes", "y")
+    if strip_images:
+        for tag in soup.find_all("img"):
+            tag.decompose()
+    text_only = os.getenv("BODY_TEXT_ONLY", "").strip().lower() in ("1", "true", "yes", "y")
+    if text_only:
+        text = soup.get_text("\n")
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        return "<p>" + "</p>\n<p>".join(lines) + "</p>" if lines else ''
+    max_chars_raw = os.getenv("MAX_BODY_CHARS", "").strip()
+    if soup.body:
+        cleaned = soup.body.decode_contents()
+    else:
+        cleaned = soup.decode_contents()
+    if max_chars_raw:
+        try:
+            max_chars = int(max_chars_raw)
+        except ValueError:
+            logging.warning("Invalid MAX_BODY_CHARS; ignoring")
+            return cleaned
+        if max_chars > 0:
+            return cleaned[:max_chars]
+    return cleaned
 
 
 class FeedparserThread(threading.Thread):
@@ -75,6 +123,7 @@ class FeedparserThread(threading.Thread):
             blog = feed['feed']['title']
         except KeyError:
             blog = "---"
+        blog = strip_invalid_xml_chars(blog)
         all_posts = []
         for entry in feed['entries']:
             post = process_entry(entry, blog, None)
@@ -117,7 +166,7 @@ def process_entry(entry, blog, START):
     if START and when < START:
         return
 
-    title = entry.get('title', "Null")
+    title = strip_invalid_xml_chars(entry.get('title', "Null"))
 
     try:
         author = entry['author']
@@ -126,14 +175,16 @@ def process_entry(entry, blog, START):
             author = ', '.join(a['name'] for a in entry.get('authors', []))
         except KeyError:
             author = 'Anonymous'
+    author = strip_invalid_xml_chars(author)
 
-    link = entry['link']
+    link = strip_invalid_xml_chars(entry['link'])
 
     try:
         body = entry['content'][0]['value']
     except KeyError:
         body = entry.get('summary', '')
 
+    body = sanitize_body(body)
     if not body:
         return
 
