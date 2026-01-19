@@ -5,7 +5,9 @@
 This script is intended for "know-how" users, if any of the above puzzles you, you're probably not the intended audience.
 
 
-*Caveat*: If your MOBI file gets bigger than 25MB (easy if  you have a lot of RSS sources), amazon will refuse to whispersync to your device. Can't do anything about it.
+*Caveat*: If your MOBI file gets bigger than 25MB (easy if you have a lot of RSS sources), amazon will refuse to whispersync to your device. Can't do anything about it.
+
+If your SMTP provider enforces a message size limit (e.g. Gmail's 25MB), set `MAX_MESSAGE_SIZE_MB` (for example, `24`). Oversize files will be split into multiple parts before sending.
 
 ## Under the hood
 

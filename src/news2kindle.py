@@ -128,9 +128,21 @@ html_perpost = u"""
 """
 
 
-def send_mail(send_from, send_to, subject, text, files):
-    # assert isinstance(send_to, list)
+def get_max_message_bytes():
+    raw = os.getenv("MAX_MESSAGE_SIZE_MB", "").strip()
+    if not raw:
+        return None
+    try:
+        max_mb = float(raw)
+    except ValueError:
+        logging.warning("Invalid MAX_MESSAGE_SIZE_MB=%s; ignoring", raw)
+        return None
+    if max_mb <= 0:
+        return None
+    return int(max_mb * 1024 * 1024)
 
+
+def build_message(send_from, send_to, subject, text, files):
     msg = MIMEMultipart()
     msg['From'] = send_from
     msg['To'] = COMMASPACE.join(send_to)
@@ -145,6 +157,34 @@ def send_mail(send_from, send_to, subject, text, files):
                 Content_Disposition=f'attachment; filename="{os.path.basename(f)}"',
                 Name=os.path.basename(f)
             ))
+    return msg
+
+
+def message_size_bytes(msg):
+    return len(msg.as_bytes())
+
+
+def build_epub(posts, epub_file, epub_title, epub_lang):
+    result = html_head + \
+        u"\n".join([html_perpost.format(**nicepost(post))
+                    for post in posts]) + html_tail
+
+    os.environ['PYPANDOC_PANDOC'] = PANDOC
+    pypandoc.convert_text(result,
+                          to='epub3',
+                          format="html",
+                          outputfile=epub_file,
+                          extra_args=["--standalone",
+                                      f"--epub-cover-image={COVER_FILE}",
+                                      f"--metadata=title={epub_title}",
+                                      f"--metadata=lang={epub_lang}",
+                                      ])
+
+
+def send_mail(send_from, send_to, subject, text, files, msg=None):
+    # assert isinstance(send_to, list)
+    if msg is None:
+        msg = build_message(send_from, send_to, subject, text, files)
     if EMAIL_SMTP_PORT == 465:
         smtp = smtplib.SMTP_SSL(EMAIL_SMTP, EMAIL_SMTP_PORT)
     else:
@@ -180,38 +220,85 @@ def do_one_round():
     if posts:
         logging.info("Compiling newspaper")
 
-        result = html_head + \
-            u"\n".join([html_perpost.format(**nicepost(post))
-                        for post in posts]) + html_tail
-
-        logging.info("Creating epub")
-
         epub_title = os.getenv("EPUB_TITLE", "Daily News")
         epub_lang = os.getenv("EPUB_LANG", "en")
         epubFile = 'dailynews.epub'
-
-        os.environ['PYPANDOC_PANDOC'] = PANDOC
-        pypandoc.convert_text(result,
-                              to='epub3',
-                              format="html",
-                              outputfile=epubFile,
-                              extra_args=["--standalone",
-                                          f"--epub-cover-image={COVER_FILE}",
-                                          f"--metadata=title={epub_title}",
-                                          f"--metadata=lang={epub_lang}",
-                                          ])
-        logging.info("Sending to kindle email")
-        send_mail(send_from=EMAIL_FROM,
-                  send_to=[KINDLE_EMAIL],
-                  subject="Daily News",
-                  text="This is your daily news.\n\n--\n\n",
-                  files=[epubFile])
+        subject = "Daily News"
+        body_text = "This is your daily news.\n\n--\n\n"
         keep_output = os.getenv("KEEP_OUTPUT", "").strip().lower() in ("1", "true", "yes", "y")
-        if keep_output:
-            logging.info("Keeping output file %s", epubFile)
+        max_msg_bytes = get_max_message_bytes()
+
+        def send_epub(epub_file, mail_subject):
+            msg = build_message(
+                send_from=EMAIL_FROM,
+                send_to=[KINDLE_EMAIL],
+                subject=mail_subject,
+                text=body_text,
+                files=[epub_file],
+            )
+            if max_msg_bytes:
+                msg_size = message_size_bytes(msg)
+                if msg_size > max_msg_bytes:
+                    logging.warning(
+                        "Message size %d exceeds limit %d for %s",
+                        msg_size,
+                        max_msg_bytes,
+                        epub_file,
+                    )
+                    return False
+            send_mail(
+                send_from=EMAIL_FROM,
+                send_to=[KINDLE_EMAIL],
+                subject=mail_subject,
+                text=body_text,
+                files=[epub_file],
+                msg=msg,
+            )
+            return True
+
+        logging.info("Creating epub")
+        build_epub(posts, epubFile, epub_title, epub_lang)
+        logging.info("Sending to kindle email")
+        sent = send_epub(epubFile, subject)
+        if not sent and max_msg_bytes:
+            if len(posts) == 1:
+                logging.warning("Single post exceeds message size limit; skipping send.")
+            else:
+                if not keep_output:
+                    os.remove(epubFile)
+                logging.info("Splitting into multiple parts to fit message size limit.")
+                part_index = 1
+
+                def process_part(part_posts):
+                    nonlocal part_index
+                    part_file = f"dailynews_part{part_index}.epub"
+                    build_epub(part_posts, part_file, epub_title, epub_lang)
+                    part_subject = f"{subject} (Part {part_index})"
+                    if send_epub(part_file, part_subject):
+                        if keep_output:
+                            logging.info("Keeping output file %s", part_file)
+                        else:
+                            os.remove(part_file)
+                        part_index += 1
+                    else:
+                        if not keep_output:
+                            os.remove(part_file)
+                        if len(part_posts) == 1:
+                            logging.warning(
+                                "Single post exceeds message size limit; skipping send."
+                            )
+                            return
+                        mid = len(part_posts) // 2
+                        process_part(part_posts[:mid])
+                        process_part(part_posts[mid:])
+
+                process_part(posts)
         else:
-            logging.info("Cleaning up...")
-            os.remove(epubFile)
+            if keep_output:
+                logging.info("Keeping output file %s", epubFile)
+            else:
+                logging.info("Cleaning up...")
+                os.remove(epubFile)
 
     logging.info("Finished.")
     try:
