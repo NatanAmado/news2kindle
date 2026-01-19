@@ -47,6 +47,14 @@ class FeedparserThread(threading.Thread):
         except ValueError:
             logging.warning("Invalid MIN_ITEMS_PER_FEED; using 0")
             min_items = 0
+        try:
+            max_age_hours = float(os.getenv("MAX_POST_AGE_HOURS", "") or 0)
+        except ValueError:
+            logging.warning("Invalid MAX_POST_AGE_HOURS; ignoring")
+            max_age_hours = 0
+        max_age_cutoff = None
+        if max_age_hours > 0:
+            max_age_cutoff = pytz.utc.localize(datetime.utcnow()) - timedelta(hours=max_age_hours)
         skip_bozo = os.getenv("SKIP_BOZO", "1").strip().lower() in ("1", "true", "yes", "y")
         try:
             feed = feedparser.parse(
@@ -74,6 +82,8 @@ class FeedparserThread(threading.Thread):
                 all_posts.append(post)
 
         all_posts.sort(key=lambda post: post.time, reverse=True)
+        if max_age_cutoff:
+            all_posts = [post for post in all_posts if post.time >= max_age_cutoff]
         recent_posts = [post for post in all_posts if post.time >= self.START]
         if min_items > 0 and len(recent_posts) < min_items:
             self.myposts = all_posts[:min_items]
