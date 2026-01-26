@@ -247,7 +247,8 @@ def do_one_round():
 
         epub_title = os.getenv("EPUB_TITLE", "Daily News")
         epub_lang = os.getenv("EPUB_LANG", "en")
-        epubFile = 'dailynews.epub'
+        date_str = now.strftime("%Y-%m-%d")
+        epubFile = f'dailynews-{date_str}.epub'
         subject = "Daily News"
         body_text = "This is your daily news.\n\n--\n\n"
         keep_output = os.getenv("KEEP_OUTPUT", "").strip().lower() in ("1", "true", "yes", "y")
@@ -296,7 +297,7 @@ def do_one_round():
 
                 def process_part(part_posts):
                     nonlocal part_index
-                    part_file = f"dailynews_part{part_index}.epub"
+                    part_file = f"dailynews-{date_str}-part{part_index}.epub"
                     build_epub(part_posts, part_file, epub_title, epub_lang)
                     part_subject = f"{subject} (Part {part_index})"
                     if send_epub(part_file, part_subject):

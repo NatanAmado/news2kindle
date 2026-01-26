@@ -96,10 +96,12 @@ class FeedparserThread(threading.Thread):
             logging.warning("Invalid MIN_ITEMS_PER_FEED; using 0")
             min_items = 0
         try:
-            max_age_hours = float(os.getenv("MAX_POST_AGE_HOURS", "") or 0)
+            max_age_hours = float(os.getenv("MAX_POST_AGE_HOURS", "24") or 24)
         except ValueError:
-            logging.warning("Invalid MAX_POST_AGE_HOURS; ignoring")
-            max_age_hours = 0
+            logging.warning("Invalid MAX_POST_AGE_HOURS; defaulting to 24")
+            max_age_hours = 24
+        if max_age_hours <= 0 or max_age_hours > 24:
+            max_age_hours = 24
         max_age_cutoff = None
         if max_age_hours > 0:
             max_age_cutoff = pytz.utc.localize(datetime.utcnow()) - timedelta(hours=max_age_hours)
